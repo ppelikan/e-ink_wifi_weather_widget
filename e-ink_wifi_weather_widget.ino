@@ -10,8 +10,20 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
 
+#include <OneWire.h>
+#include <DallasTemperature.h>
+
+#include <time.h>
+
+// #define WIDGETS_SHOW_DEBUG_FRAMES 1
+
 #include "plot.h"
 #include "label.h"
+
+// Setup a oneWire instance to communicate with any OneWire devices (not just Maxim/Dallas temperature ICs)
+OneWire oneWire(2); //GPIO2 = port D2 on PCB
+// Pass our oneWire reference to Dallas Temperature.
+DallasTemperature sensors(&oneWire);
 
 static const char *ssid = "XXX";
 static const char *pass = "XXX";
@@ -21,23 +33,23 @@ static const String server = "http://api.openweathermap.org";
 static const String nameOfCity = "Wroclaw,PL";
 
 static const String apiKey = "XXX"; 
-
 GxIO_Class io(SPI, 15, 4, 2);  //CS, DC, RST
 GxEPD_Class display(io, 2, 5); //RST, BUSY
 
-unsigned long lastConnectionTime = 10 * 60 * 1000;        // last time you connected to the server, in milliseconds
-static const unsigned long postInterval = 10 * 60 * 1000; // posting interval of 10 minutes  (10L * 1000L; 10 seconds delay for testing)
+unsigned long lastConnectionTime = 10 * 60 * 1000;
+static const unsigned long postInterval = 2 * 60 * 1000;
 
-#define FONT_11 u8g2_font_helvB10_te //u8g2_font_t0_17b_te
+#define FONT_8 u8g2_font_helvB08_te  //u8g2_font_helvR08_te
+#define FONT_11 u8g2_font_helvB10_te //u8g2_font_t0_17b_te // select u8g2 font from here: https://github.com/olikraus/u8g2/wiki/fntlistall
 #define FONT_23 u8g2_font_helvB24_te //u8g2_font_maniac_te
-#define FONT_TEST u8g2_font_helvB12_te
+
+bool isOneWirePresent = false;
 
 U8G2_FOR_ADAFRUIT_GFX u8g2;
 
-// print Wifi status
 void printWiFiStatus(bool onlcd = false)
 {
-    // print the SSID of the network you're attached to:
+    // print the SSID of the network:
     Serial.print("SSID: ");
     Serial.println(WiFi.SSID());
     if (onlcd)
@@ -46,7 +58,7 @@ void printWiFiStatus(bool onlcd = false)
         u8g2.println(WiFi.SSID());
     }
 
-    // print your WiFi shield's IP address:
+    // print IP address:
     IPAddress ip = WiFi.localIP();
     Serial.print("IP Address: ");
     Serial.println(ip);
@@ -101,16 +113,8 @@ void setup()
     u8g2.setFontMode(1);
     u8g2.setForegroundColor(GxEPD_BLACK);
     u8g2.setBackgroundColor(GxEPD_WHITE);
-    //u8g2.setFontMode(1);
 
-    //u8g2.setFont(u8g2_font_ncenB18_te); // select u8g2 font from here: https://github.com/olikraus/u8g2/wiki/fntlistall
     u8g2.setFont(FONT_23);
-    //u8g2.setForegroundColor(GxEPD_RED);
-    // u8g2.setCursor(4, 7 + 23);
-    // u8g2.print(F("Widget pogodowy"));
-
-    // u8g2.setCursor(4, 7+23);
-    // u8g2.print(F("Widget pogodowy"));
 
     u8g2.setCursor(2, 5 + 23);
     u8g2.setForegroundColor(GxEPD_BLACK);
@@ -128,7 +132,12 @@ void setup()
     u8g2.setCursor(35, 90);
     u8g2.print(F("Trwa łączenie przez WiFi..."));
 
-    display.update();
+    // display.update();
+
+    // Start the DS18B20 sensor
+    sensors.begin();
+    if (sensors.getDeviceCount())
+        isOneWirePresent = true;
 
     connect_to_WiFi();
     delay(5000);
@@ -142,14 +151,12 @@ void setup()
     u8g2.println(F("Pobieranie danych..."));
     //display.update();
 
-    //text.reserve(JSON_BUFF_DIMENSION);
-
     Serial.println("End Setup ==========");
 
     lastConnectionTime = millis();
-    //makehttpRequest();
     HTTPreq();
     updateDisplay();
+    ESP.deepSleep(30e6);
 }
 
 void loop()
@@ -221,112 +228,99 @@ String getDoWstr(char num)
 
 typedef struct
 {
-    String Temperature;
-    String Pressure;
-    String WindSpeed;
-    String humidity;
-    String WeatherDescription;
-    String Date;
-    String DayOfWeek;
     const tImage *Icon; //pointer to const tImage
 } tDisplayData;
 
 tDisplayData DisplayData;
+
+// Label TempeLabel(64 + 1, 0, 100, 29);
+// Label WeekDayLabel(64 + 1 + 100 + 1, 0, 264 - (65 + 101), 15);
+// Label DateLabel(65 + 101, 16, 264 - (65 + 101), 15);
+// Label PressureLabel(65, 30, (264 - 65) / 2, 15);
+// Label WindLabel(65 + (264 - 65) / 2 + 1, 30, (264 - 65) / 2, 15);
+// Label WeatherDesrLabel(65, 30+16, (264 - 65), 15);
+// // Plot TempPlot(25, 64, 230, 50);
+// Plot TempPlot(6, 64, 250, 50);
+Label TempeLabel(64, 0, 100, 29);
+Label Tempe2Label(64 + 101, 30+16+8, 264 - (65 + 101), 15);
+
+Label WeekDayLabel(64 + 1 + 100 + 1, 0, 264 - (65 + 101), 15);
+Label DateLabel(65 + 101, 16, 264 - (65 + 101), 15);
+
+Label PressureLabel(65, 30, (264 - 65) / 2, 15);
+Label WindLabel(65, 30 + 16, (264 - 65) / 2, 15);
+Label WeatherDesrLabel(0, 62, 264, 15);
+Plot TempPlot(6, 63 + 16, 250, 50);
 
 //to parse json data recieved from OWM
 void parseJson(String *jsonString)
 {
     DynamicJsonDocument jsonDoc(10000);
 
-    // FIND FIELDS IN JSON TREE
     DeserializationError error = deserializeJson(jsonDoc, jsonString->c_str());
     if (error)
     {
-        Serial.println("parseObject() failed, error: " + String(error.c_str()));
+        Serial.println("deserializeJson failed, error: " + String(error.c_str()));
         return;
     }
 
-    auto list = jsonDoc["list"];
+    char buf[50];
 
-    DisplayData.Icon = getIcon(list[1]["weather"][0]["icon"]);
-    DisplayData.Temperature = limit_past_dot(list[1]["main"]["temp"]) + "°C";
-    DisplayData.Pressure = limit_past_dot(list[1]["main"]["pressure"]) + "hPa";
-    DisplayData.WeatherDescription = (const char *)list[1]["weather"][0]["description"];
-    DisplayData.WindSpeed = limit_past_dot(list[1]["wind"]["speed"], 0) + "km/h";
-    DisplayData.Date = limit_past_dot(list[0]["dt_txt"], 0, " ");
-    DisplayData.DayOfWeek = getDoWstr(getDoW((unsigned long)list[0]["dt"]));
+    DisplayData.Icon = getIcon(jsonDoc["list"][0]["weather"][0]["icon"]);
+    TempeLabel.setText(limit_past_dot(jsonDoc["list"][0]["main"]["temp"]) + "°C"); //TODO: get rid of all used limit_past_dot(), instead use round() function
+    PressureLabel.setText(limit_past_dot(jsonDoc["list"][0]["main"]["pressure"]) + "hPa");
+    WeatherDesrLabel.setText(/*(const char *)*/ jsonDoc["list"][0]["weather"][0]["description"]);
+    WindLabel.setText(limit_past_dot(jsonDoc["list"][0]["wind"]["speed"], 0) + "km/h");
+    DateLabel.setText(limit_past_dot(jsonDoc["list"][0]["dt_txt"], 0, " "));
+    WeekDayLabel.setText(getDoWstr(getDoW((unsigned long)jsonDoc["list"][0]["dt"]))); // TODO: take timezones into account
+    //timestamp = (unsigned long)jsonDoc["list"][0]["dt"] + jsonDoc["city"]["timezone"]; //TODO: timestamp corrected by timezone (city.timezone - Shift in seconds from UTC)
+    if (isOneWirePresent)
+    {
+        sensors.requestTemperatures();
+        float sensorTemp = sensors.getTempCByIndex(0);
+        sprintf(buf, "%.1f°C", sensorTemp);
+        Tempe2Label.setText(buf);
+    } else
+    {
+        Tempe2Label.setText("---");
+    }
+    
+    TempPlot.clear(0);
+    for (int i = 0; i < 8; i++)
+    {
+        String tempstr = jsonDoc["list"][i]["main"]["temp"];
+        String dtstr = limit_past_dot(jsonDoc["list"][i]["dt_txt"], 2, ":").substring(11);
+        if (i == 0)
+            dtstr = "teraz";
+        TempPlot.addPoint(i, tempstr.toFloat(), dtstr, String(limit_past_dot(tempstr, 0) + "°C"));
+    }
 }
 
 void displayGraph()
 {
-    Plot TempPlot(5, 64, 254, 50);
+    TempPlot.setAxisLabelsFont(FONT_8);
     TempPlot.FitZero = false;
-    TempPlot.ShowBorder = TempPlot.ShowXAxis = TempPlot.ShowYAxis = false;
-    TempPlot.addPoint(0, 21);
-    TempPlot.addPoint(1, 23);
-    TempPlot.addPoint(2, 21);
-    TempPlot.addPoint(3, 20);
-    TempPlot.addPoint(4, 12);
-    TempPlot.addPoint(5, 11);
-    TempPlot.addPoint(6, 14);
-    TempPlot.addPoint(7, 19);
+    TempPlot.ShowBorder = TempPlot.ShowXAxis = false;
+    TempPlot.borderY = 5;
     TempPlot.redraw();
 }
-
-
-
-Label TempeLabel(64+1, 0, 100, 29);
-Label WeekDayLabel(64+1+100+1, 0, 264 - (65+101), 15);
-Label DateLabel(65+101, 16, 264 - (65+101), 15);
-Label PressureLabel(65,  64-16, (264 - 65) / 2, 15);
-Label WindLabel(65 + (264 - 65) / 2, 64-16, (264 - 65) / 2, 15);
-Label WeatherDesrLabel(65,  64-16*2, (264 - 65), 15);
 
 void updateDisplay()
 {
     display.fillScreen(GxEPD_WHITE);
     draw(0, 0, *DisplayData.Icon);
 
-    // u8g2.setFont(FONT_23);
-    // // u8g2.setCursor(65 + 2, 3 + 23 + 2);
-    // // u8g2.print(DisplayData.Temperature);
-    // //u8g2.setCursor(65+1, 3 + 23+1);
-    // // u8g2.setForegroundColor(GxEPD_RED);
-    // // u8g2.print(DisplayData.Temperature);
-    // u8g2.setCursor(65, 4 + 23);
-    // // u8g2.setForegroundColor(GxEPD_BLACK);
-    // u8g2.print(DisplayData.Temperature);
-
-    TempeLabel.setTextPos(jLeftCenter).setFont(FONT_23).redraw(DisplayData.Temperature);
-    WeekDayLabel.setTextPos(jCenter).setFont(FONT_11).redraw(DisplayData.DayOfWeek);
-    DateLabel.setTextPos(jCenter).setFont(FONT_11).redraw(DisplayData.Date);
-    PressureLabel.setTextPos(jCenter).setFont(FONT_11).redraw(DisplayData.Pressure);
-    WindLabel.setTextPos(jCenter).setFont(FONT_11).redraw(DisplayData.WindSpeed);
-    WeatherDesrLabel.setTextPos(jCenter).setFont(FONT_TEST).redraw(DisplayData.WeatherDescription);
-
-    // u8g2.setFont(FONT_11);
-    // u8g2.setCursor(185, 3 + 11);
-    // u8g2.print(DisplayData.DayOfWeek);
-    // u8g2.setCursor(180, 5 + 11 + 11);
-    // u8g2.print(DisplayData.Date);
-    // u8g2.setCursor(65, 5 + 23 + 14);
-    // u8g2.print(DisplayData.Pressure + "   " + DisplayData.WindSpeed);
-    // u8g2.setCursor(65, 5 + 23 + 14 * 2);
-    // u8g2.print(DisplayData.WeatherDescription);
     displayGraph();
+    TempeLabel.setTextPos(jLeftCenter).setFont(FONT_23).redraw();
+    WeekDayLabel.setTextPos(jCenter).setFont(FONT_11).redraw();
+    DateLabel.setTextPos(jCenter).setFont(FONT_11).redraw();
+    PressureLabel.setTextPos(jLeftCenter).setFont(FONT_11).redraw();
+    WindLabel.setTextPos(jLeftCenter).setFont(FONT_11).redraw();
+    WeatherDesrLabel.setTextPos(jLeftCenter).setFont(FONT_11).redraw();
+    Tempe2Label.setTextPos(jCenter).setFont(FONT_11).redraw();
+
     display.update();
 }
 
-// Label TempeLabel(64+1, 0, 100, 25);
-// Label WeekDayLabel(64+1+100+1, 0, 264 - (65+101), 13);
-// Label DateLabel(65+101, 14, 264 - (65+101), 13);
-// Label PressureLabel(65, 64-15*2, (264 - 65) / 2, 13);
-// Label WindLabel(65 + (264 - 65) / 2, 5 + 23 + 14, (264 - 65) / 2, 13);
-// Label WeatherDesrLabel(65, 64-15, (264 - 65), 13);
-
-// Label TempeLabel(64+1, 0, 100, 28);
-// Label WeekDayLabel(64+1+100+1, 0, 264 - (65+101), 15);
-// Label DateLabel(65+101, 16, 264 - (65+101), 15);
-// Label PressureLabel(65, 64-16*2, (264 - 65) / 2, 15);
-// Label WindLabel(65 + (264 - 65) / 2, 64-16*2 , (264 - 65) / 2, 15);
-// Label WeatherDesrLabel(65, 64-16, (264 - 65), 15);
+//TO DOS: ?
+//http://arduino.esp8266.com/Arduino/versions/2.0.0/doc/ota_updates/ota_updates.html
