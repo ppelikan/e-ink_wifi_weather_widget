@@ -99,7 +99,7 @@ void draw(int16_t x, int16_t y, tImage img, int16_t color = GxEPD_BLACK)
     display.drawBitmap(x, y, img.data, img.width, img.height, color);
 }
 
-void setup()
+void displayWelcomeScreen()
 {
     Serial.begin(115200);
     Serial.println("Setup ==========");
@@ -132,15 +132,11 @@ void setup()
     u8g2.setCursor(35, 90);
     u8g2.print(F("Trwa łączenie przez WiFi..."));
 
-    // display.update();
+    display.update();
+}
 
-    // Start the DS18B20 sensor
-    sensors.begin();
-    if (sensors.getDeviceCount())
-        isOneWirePresent = true;
-
-    connect_to_WiFi();
-    delay(5000);
+void displayConnectedScreen()
+{
     display.fillScreen(GxEPD_WHITE);
     u8g2.setCursor(5, 5);
     u8g2.println();
@@ -149,7 +145,29 @@ void setup()
     printWiFiStatus(true);
     u8g2.println();
     u8g2.println(F("Pobieranie danych..."));
-    //display.update();
+    display.update();
+}
+
+void setup()
+{
+    Serial.begin(115200);
+    Serial.println("Setup ==========");
+
+    display.setRotation(1);
+    display.init(115200);
+    u8g2.begin(display); // connect u8g2 procedures to Adafruit GFX
+
+    u8g2.setFontMode(1);
+    u8g2.setForegroundColor(GxEPD_BLACK);
+    u8g2.setBackgroundColor(GxEPD_WHITE);
+
+    // Start the DS18B20 sensor
+    sensors.begin();
+    if (sensors.getDeviceCount())
+        isOneWirePresent = true;
+
+    connect_to_WiFi();
+    //delay(5000);
 
     Serial.println("End Setup ==========");
 
@@ -242,7 +260,7 @@ tDisplayData DisplayData;
 // // Plot TempPlot(25, 64, 230, 50);
 // Plot TempPlot(6, 64, 250, 50);
 Label TempeLabel(64, 0, 100, 29);
-Label Tempe2Label(64 + 101, 30+16+8, 264 - (65 + 101), 15);
+Label Tempe2Label(64 + 101, 30 + 8, 264 - (65 + 101), 15);
 
 Label WeekDayLabel(64 + 1 + 100 + 1, 0, 264 - (65 + 101), 15);
 Label DateLabel(65 + 101, 16, 264 - (65 + 101), 15);
@@ -251,6 +269,8 @@ Label PressureLabel(65, 30, (264 - 65) / 2, 15);
 Label WindLabel(65, 30 + 16, (264 - 65) / 2, 15);
 Label WeatherDesrLabel(0, 62, 264, 15);
 Plot TempPlot(6, 63 + 16, 250, 50);
+
+Label Wtf(0, 176-25, 264, 25);
 
 //to parse json data recieved from OWM
 void parseJson(String *jsonString)
@@ -280,11 +300,12 @@ void parseJson(String *jsonString)
         float sensorTemp = sensors.getTempCByIndex(0);
         sprintf(buf, "%.1f°C", sensorTemp);
         Tempe2Label.setText(buf);
-    } else
+    }
+    else
     {
         Tempe2Label.setText("---");
     }
-    
+
     TempPlot.clear(0);
     for (int i = 0; i < 8; i++)
     {
@@ -307,6 +328,8 @@ void displayGraph()
 
 void updateDisplay()
 {
+    u8g2.setForegroundColor(GxEPD_BLACK);
+    u8g2.setBackgroundColor(GxEPD_WHITE);
     display.fillScreen(GxEPD_WHITE);
     draw(0, 0, *DisplayData.Icon);
 
@@ -318,6 +341,10 @@ void updateDisplay()
     WindLabel.setTextPos(jLeftCenter).setFont(FONT_11).redraw();
     WeatherDesrLabel.setTextPos(jLeftCenter).setFont(FONT_11).redraw();
     Tempe2Label.setTextPos(jCenter).setFont(FONT_11).redraw();
+    Wtf.fGcolor = GxEPD_WHITE;
+    Wtf.bGcolor = GxEPD_RED;
+    Wtf.setText("A tu nie wiem, co dać...");
+    Wtf.setTextPos(jCenter).setFont(FONT_11).redraw();
 
     display.update();
 }
