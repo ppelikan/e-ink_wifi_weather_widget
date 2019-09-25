@@ -116,7 +116,9 @@ void setup()
 
     HTTPreq();
     updateDisplay();
-    ESP.deepSleep(10 * 60e6); //wake up every 10 minutes (requires an GPIO16 to be shorted to RST pin)
+    oneWire.depower();
+    display.powerDown();
+    ESP.deepSleep(15 * 60e6); //wake up every 15 minutes (requires an GPIO16 to be shorted to RST pin)
 }
 
 void loop()
@@ -238,7 +240,7 @@ void parseJson(String *jsonString)
         String tempstr = jsonDoc["list"][i]["main"]["temp"];
         String dtstr = limit_past_dot(jsonDoc["list"][i]["dt_txt"], 2, ":").substring(11);
         if (i == 0)
-            dtstr = "teraz";
+            dtstr = TR_NOW;
         TempPlot.addPoint(i, tempstr.toFloat(), dtstr, String(limit_past_dot(tempstr, 0) + "°C"));
     }
 }
