@@ -13,38 +13,47 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
-#include <time.h>
-
-// #define WIDGETS_SHOW_DEBUG_FRAMES 1
+//#include <time.h> //TODO
 
 #include "plot.h"
 #include "label.h"
 
-// Setup a oneWire instance to communicate with any OneWire devices (not just Maxim/Dallas temperature ICs)
-OneWire oneWire(2); //GPIO2 = port D2 on PCB
-// Pass our oneWire reference to Dallas Temperature.
-DallasTemperature sensors(&oneWire);
+// ******** YOUR SETUP ********
 
+// WiFi network name and password
 static const char *ssid = "XXX";
 static const char *pass = "XXX";
 
+// OpenWeatherMap API server name
 static const String server = "http://api.openweathermap.org";
 
+// replace the next line to match your city and 2 letter country code
 static const String nameOfCity = "Wroclaw,PL";
 
-static const String apiKey = "XXX"; 
-GxIO_Class io(SPI, 15, 4, 2);  //CS, DC, RST
-GxEPD_Class display(io, 2, 5); //RST, BUSY
+// replace the next line with your API Key
+static const String apiKey = "XXX";
 
-unsigned long lastConnectionTime = 10 * 60 * 1000;
-static const unsigned long postInterval = 2 * 60 * 1000;
+//E-Ink display connection lines (default is for ESP8266 E-paper Driver Board)
+#define EINK_CS        15
+#define EINK_DC        4
+#define EINK_RST       2
+#define EINK_BUSY      5
+#define ONEWIRE_SENSOR 2 //GPIO2 = port D2 on ESP8266 E-Paper PCB
 
-#define FONT_8 u8g2_font_helvB08_te  //u8g2_font_helvR08_te
-#define FONT_11 u8g2_font_helvB10_te //u8g2_font_t0_17b_te // select u8g2 font from here: https://github.com/olikraus/u8g2/wiki/fntlistall
-#define FONT_23 u8g2_font_helvB24_te //u8g2_font_maniac_te
+// ******** ******** ********
+
+
+#define FONT_8 u8g2_font_helvB08_te
+#define FONT_11 u8g2_font_helvB10_te // select u8g2 fonts from here: https://github.com/olikraus/u8g2/wiki/fntlistall
+#define FONT_23 u8g2_font_helvB24_te
 
 bool isOneWirePresent = false;
 
+OneWire oneWire(ONEWIRE_SENSOR); 
+DallasTemperature sensors(&oneWire);
+
+GxIO_Class io(SPI, EINK_CS, EINK_DC, EINK_RST);  //CS, DC, RST
+GxEPD_Class display(io, EINK_RST, EINK_BUSY); //RST, BUSY
 U8G2_FOR_ADAFRUIT_GFX u8g2;
 
 void printWiFiStatus(bool onlcd = false)
@@ -52,33 +61,17 @@ void printWiFiStatus(bool onlcd = false)
     // print the SSID of the network:
     Serial.print("SSID: ");
     Serial.println(WiFi.SSID());
-    if (onlcd)
-    {
-        u8g2.print(F("Sieć: "));
-        u8g2.println(WiFi.SSID());
-    }
 
     // print IP address:
     IPAddress ip = WiFi.localIP();
     Serial.print("IP Address: ");
     Serial.println(ip);
-    if (onlcd)
-    {
-        u8g2.print(F("Adres IP: "));
-        u8g2.println(ip);
-    }
 
     // print the received signal strength:
     long rssi = WiFi.RSSI();
     Serial.print("signal strength (RSSI):");
     Serial.print(rssi);
     Serial.println(" dBm");
-    if (onlcd)
-    {
-        u8g2.print(F("Poziom sygnału (RSSI): "));
-        u8g2.print(rssi);
-        u8g2.println(F("dBm"));
-    }
 }
 
 void connect_to_WiFi()
@@ -86,7 +79,7 @@ void connect_to_WiFi()
     WiFi.mode(WIFI_STA);
     WiFi.begin(ssid, pass);
     Serial.println("connecting");
-    while (WiFi.status() != WL_CONNECTED)
+    while (WiFi.status() != WL_CONNECTED)  //TODO: add timeout and error displayed on eink
     {
         delay(500);
         Serial.print(".");
@@ -97,55 +90,6 @@ void connect_to_WiFi()
 void draw(int16_t x, int16_t y, tImage img, int16_t color = GxEPD_BLACK)
 {
     display.drawBitmap(x, y, img.data, img.width, img.height, color);
-}
-
-void displayWelcomeScreen()
-{
-    Serial.begin(115200);
-    Serial.println("Setup ==========");
-
-    display.setRotation(1);
-    display.init(115200);
-    u8g2.begin(display); // connect u8g2 procedures to Adafruit GFX
-
-    display.fillScreen(GxEPD_WHITE);
-
-    u8g2.setFontMode(1);
-    u8g2.setForegroundColor(GxEPD_BLACK);
-    u8g2.setBackgroundColor(GxEPD_WHITE);
-
-    u8g2.setFont(FONT_23);
-
-    u8g2.setCursor(2, 5 + 23);
-    u8g2.setForegroundColor(GxEPD_BLACK);
-    u8g2.print(F("Pogodny widget"));
-
-    u8g2.setCursor(5, 7 + 23 + 25);
-    u8g2.setFont(FONT_11);
-    u8g2.println(F("Zrobione przez Pawła"));
-
-    draw(5 + 0, 110, icon_thunder);
-    draw(5 + 64, 110, icon_clouds);
-    draw(5 + 128, 110, icon_smallrain);
-    draw(5 + 192, 110, icon_sun);
-
-    u8g2.setCursor(35, 90);
-    u8g2.print(F("Trwa łączenie przez WiFi..."));
-
-    display.update();
-}
-
-void displayConnectedScreen()
-{
-    display.fillScreen(GxEPD_WHITE);
-    u8g2.setCursor(5, 5);
-    u8g2.println();
-    u8g2.println(F("Połączono z siecią"));
-    u8g2.println();
-    printWiFiStatus(true);
-    u8g2.println();
-    u8g2.println(F("Pobieranie danych..."));
-    display.update();
 }
 
 void setup()
@@ -163,35 +107,27 @@ void setup()
 
     // Start the DS18B20 sensor
     sensors.begin();
-    if (sensors.getDeviceCount())
+    if (sensors.getDeviceCount()) //check whether sensor is connected
         isOneWirePresent = true;
 
     connect_to_WiFi();
-    //delay(5000);
 
     Serial.println("End Setup ==========");
 
-    lastConnectionTime = millis();
     HTTPreq();
     updateDisplay();
-    ESP.deepSleep(30e6);
+    ESP.deepSleep(10 * 60e6); //wake up every 10 minutes (requires an GPIO16 to be shorted to RST pin)
 }
 
 void loop()
 {
-    if (millis() - lastConnectionTime > postInterval)
-    {
-        lastConnectionTime = millis();
-        HTTPreq();
-        updateDisplay();
-    }
 }
 
 void HTTPreq()
 {
     WiFiClient client;
     HTTPClient http;
-    String addr = server + "/data/2.5/forecast?q=" + nameOfCity + "&APPID=" + apiKey + "&mode=json&units=metric&cnt=8&lang=pl";
+    String addr = server + "/data/2.5/forecast?q=" + nameOfCity + "&APPID=" + apiKey + "&mode=json&units=metric&cnt=8&lang="+TR_CCODE;
     Serial.println(addr);
     http.begin(addr);
     int httpCode = http.GET();
@@ -240,7 +176,7 @@ uint8_t getDoW(unsigned long t)
 
 String getDoWstr(char num)
 {
-    static const String dow_lut[] = {"Niedziela", "Poniedziałek", "Wtorek", "Środa", "Czwartek", "Piątek", "Sobota"};
+    static const String dow_lut[] = {TR_DOW_1, TR_DOW_2, TR_DOW_3, TR_DOW_4, TR_DOW_5, TR_DOW_6, TR_DOW_7};
     return dow_lut[num];
 }
 
@@ -251,20 +187,10 @@ typedef struct
 
 tDisplayData DisplayData;
 
-// Label TempeLabel(64 + 1, 0, 100, 29);
-// Label WeekDayLabel(64 + 1 + 100 + 1, 0, 264 - (65 + 101), 15);
-// Label DateLabel(65 + 101, 16, 264 - (65 + 101), 15);
-// Label PressureLabel(65, 30, (264 - 65) / 2, 15);
-// Label WindLabel(65 + (264 - 65) / 2 + 1, 30, (264 - 65) / 2, 15);
-// Label WeatherDesrLabel(65, 30+16, (264 - 65), 15);
-// // Plot TempPlot(25, 64, 230, 50);
-// Plot TempPlot(6, 64, 250, 50);
 Label TempeLabel(64, 0, 100, 29);
 Label Tempe2Label(64 + 101, 30 + 8, 264 - (65 + 101), 15);
-
 Label WeekDayLabel(64 + 1 + 100 + 1, 0, 264 - (65 + 101), 15);
 Label DateLabel(65 + 101, 16, 264 - (65 + 101), 15);
-
 Label PressureLabel(65, 30, (264 - 65) / 2, 15);
 Label WindLabel(65, 30 + 16, (264 - 65) / 2, 15);
 Label WeatherDesrLabel(0, 62, 264, 15);
@@ -343,7 +269,7 @@ void updateDisplay()
     Tempe2Label.setTextPos(jCenter).setFont(FONT_11).redraw();
     Wtf.fGcolor = GxEPD_WHITE;
     Wtf.bGcolor = GxEPD_RED;
-    Wtf.setText("A tu nie wiem, co dać...");
+    Wtf.setText("TODO, put something here...");
     Wtf.setTextPos(jCenter).setFont(FONT_11).redraw();
 
     display.update();
@@ -351,3 +277,4 @@ void updateDisplay()
 
 //TO DOS: ?
 //http://arduino.esp8266.com/Arduino/versions/2.0.0/doc/ota_updates/ota_updates.html
+
