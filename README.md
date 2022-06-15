@@ -3,7 +3,7 @@
 This project is intednded to run on ESP8266 e-paper driver board NodeMCU module connected to 2.7" e-paper display and optional DS18B20 temperature sensor.
 Weather forecast data is being downloaded from openweathermap.org JSON API. It is super energy efficient. You should be able to power it from a single 3V battery for a long time.
 
-![](https://i.ibb.co/tCm8YwF/widge1.jpg)
+![ppelikan_e-ink_wifi_weather_widget](https://user-images.githubusercontent.com/6893111/173921241-fa8fbf55-b73e-4740-8884-73fc6e82b5b2.jpeg)
 
 ## Features
 - Live forecast data updated every 15min
